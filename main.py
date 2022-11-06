@@ -297,11 +297,12 @@ account_value_per_day = []
 for day in trading_days:
     ############## skipping some missing data for spy #####################
     #if '2005-01-21' > day:
-    if '2005-01-21' > day and '/' not in day:
+    #if '2005-01-21' > day and '/' not in day:
+    if '2012-01-13' > day and '/' not in day:
         #print("skipping: ", day)
         account_value_per_day.append(account_value)
         continue
-    elif '2021-11-17' == day:
+    elif '2005-01-21' == day:
         print("done skipping")
 
     options_chain = data_obj.data.loc[data_obj.data['DataDate'] == day]
@@ -362,14 +363,17 @@ for day in trading_days:
                         break
 
                 if short_exp_date is not None:
-                    short_calls = options_chain.loc[(options_chain['ExpirationDate'] == short_exp_date) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) < .5)]
+                    short_calls = options_chain.loc[(options_chain['ExpirationDate'] == short_exp_date) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) < .5)].drop_duplicates()
                     call_index = 0
                     delta_diff = 1000
                     for call_ind in short_calls.index:
-                        abs_diff = abs(abs(short_calls['Delta'][call_ind]) - .16)
-                        if abs_diff < delta_diff:
-                            call_index = call_ind
-                            delta_diff = abs_diff
+                        if isinstance(short_calls['Delta'][call_ind], (int, float)):
+                            abs_diff = abs(abs(short_calls['Delta'][call_ind]) - .16)
+                            if abs_diff < delta_diff:
+                                call_index = call_ind
+                                delta_diff = abs_diff
+                    if short_calls.empty:
+                        continue
                     print("short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index])
                     short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
                     last_short_price = short_calls['BidPrice'][call_index]
@@ -380,14 +384,17 @@ for day in trading_days:
             if exps[-1] > long_option.exp_date or short_call_itm:
                 num_long_closes += 1
 
-                long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)]
+                long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
                 call_index = 0
                 delta_diff = 1000
                 for call_ind in long_calls.index:
-                    abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
-                    if abs_diff < delta_diff:
-                        call_index = call_ind
-                        delta_diff = abs_diff
+                    if isinstance(long_calls['Delta'][call_ind], (int, float)):
+                        abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
+                        if abs_diff < delta_diff:
+                            call_index = call_ind
+                            delta_diff = abs_diff
+                if long_calls.empty:
+                    continue
                 print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index])
                 long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
                 last_long_price = long_calls['AskPrice'][call_index]
@@ -395,14 +402,17 @@ for day in trading_days:
 
     if long_option is None:
         exps = options_chain['ExpirationDate'].unique()
-        long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)]
+        long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
         call_index = 0
         delta_diff = 1000
         for call_ind in long_calls.index:
-            abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
-            if abs_diff < delta_diff:
-                call_index = call_ind
-                delta_diff = abs_diff
+            if isinstance(long_calls['Delta'][call_ind], (int, float)):
+                abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
+                if abs_diff < delta_diff:
+                    call_index = call_ind
+                    delta_diff = abs_diff
+        if long_calls.empty:
+            continue
         print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index])
         long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
         last_long_price = long_calls['AskPrice'][call_index]
@@ -422,14 +432,17 @@ for day in trading_days:
                 break
 
         if short_exp_date is not None:
-            short_calls = options_chain.loc[(options_chain['ExpirationDate'] == short_exp_date) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) < .5)]
+            short_calls = options_chain.loc[(options_chain['ExpirationDate'] == short_exp_date) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) < .5)].drop_duplicates()
             call_index = 0
             delta_diff = 1000
             for call_ind in short_calls.index:
-                abs_diff = abs(abs(short_calls['Delta'][call_ind]) - .16)
-                if abs_diff < delta_diff:
-                    call_index = call_ind
-                    delta_diff = abs_diff
+                if isinstance(short_calls['Delta'][call_ind], (int, float)):
+                    abs_diff = abs(abs(short_calls['Delta'][call_ind]) - .16)
+                    if abs_diff < delta_diff:
+                        call_index = call_ind
+                        delta_diff = abs_diff
+            if short_calls.empty:
+                continue
             print("Short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index])
             short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
             last_short_price = short_calls['BidPrice'][call_index]
