@@ -276,16 +276,18 @@ end = timer()
 print(end - start) # Time in seconds, e.g. 5.38091952400282
 
 trading_days = data_obj.data['DataDate'].unique()
-print(trading_days)
 
 start = timer()
+
+spy_prices_df = pd.DataFrame(spy_prices, columns=['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'])
 
 long_option = None
 short_option = None
 last_long_price = None
 last_short_price = None
 
-account_value = 100000
+cash_balance = 100000
+balance_invested = 0
 
 num_long_buys = 0
 num_long_closes = 0
@@ -293,14 +295,14 @@ num_short_sells = 0
 num_short_closes = 0
 
 account_value_per_day = []
+result_data = []
 
 for day in trading_days:
     ############## skipping some missing data for spy #####################
     #if '2005-01-21' > day:
-    #if '2005-01-21' > day and '/' not in day:
-    if '2012-01-13' > day and '/' not in day:
+    #if '2019-08-02' > day and '/' not in day:
+    if '2005-01-21' > day and '/' not in day:
         #print("skipping: ", day)
-        account_value_per_day.append(account_value)
         continue
     elif '2005-01-21' == day:
         print("done skipping")
@@ -323,18 +325,23 @@ for day in trading_days:
             last_long_price = None
             short_option = None
             last_short_price = None
+            cash_balance += long_call['BidPrice'].iloc[0] * 100
+            balance_invested -= long_call['BidPrice'].iloc[0] * 100
             num_long_closes += 1
+            cash_balance -= short_call['AskPrice'].iloc[0] * 100
+            balance_invested += short_call['AskPrice'].iloc[0] * 100
             num_short_closes += 1
             print("Couldn't find the current position anymore. Closing all positions")
         else:
-            account_value += ((long_call['BidPrice'].iloc[0] - last_long_price) * 100)
+            #account_value += ((long_call['BidPrice'].iloc[0] - last_long_price) * 100)
+            balance_invested = (long_call['BidPrice'].iloc[0] * 100) - (short_call['AskPrice'].iloc[0] * 100)
 
             ###################### remove later ############################3
             #print("Testing: ")
             #print(short_call)
             ################################################################333
 
-            account_value -= ((short_call['AskPrice'].iloc[0] - last_short_price) * 100)
+            #account_value -= ((short_call['AskPrice'].iloc[0] - last_short_price) * 100)
             last_long_price = long_call['BidPrice'].iloc[0]
             last_short_price = short_call['AskPrice'].iloc[0]
 
@@ -346,10 +353,15 @@ for day in trading_days:
             #if the short call expires today roll it
             if day == short_option.exp_date or (current_dt.weekday() == 4 and (current_exp_date - current_dt).days == 1):
                 #if in the money, close entire position
-                if abs(short_call['Delta'].iloc[0]) > .5:
-                    num_long_closes += 1
+                if short_call['StrikePrice'].iloc[0] < short_call['UnderlyingPrice'].iloc[0]:
+                    print("short call itm, strike: ", short_call['StrikePrice'].iloc[0], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                     short_call_itm = True
 
+                #close short call
+                cash_balance -= short_call['AskPrice'].iloc[0] * 100
+                balance_invested += short_call['AskPrice'].iloc[0] * 100
+                print("CLOSING SHORT CALLS: ", short_call['AskPrice'].iloc[0])
+                short_option = None
                 num_short_closes += 1
 
                 ############### dates switch formats in 2019 ##################################
@@ -374,14 +386,23 @@ for day in trading_days:
                                 delta_diff = abs_diff
                     if short_calls.empty:
                         continue
-                    print("short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index])
-                    short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
-                    last_short_price = short_calls['BidPrice'][call_index]
-                    num_short_sells += 1
+                    #sell order
+                    if short_calls['BidPrice'][call_index] > 0:
+                        print("short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                        short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                        last_short_price = short_calls['BidPrice'][call_index]
+                        print("short call premium: ", short_calls['BidPrice'][call_index])
+                        cash_balance += short_calls['BidPrice'][call_index] * 100
+                        balance_invested -= short_call['BidPrice'].iloc[0] * 100
+                        num_short_sells += 1
 
 
             #if there's a new expirtion or the short call is expiring itm roll the long call
             if exps[-1] > long_option.exp_date or short_call_itm:
+
+                #close long position
+                cash_balance += long_call['BidPrice'].iloc[0] * 100
+                balance_invested -= long_call['BidPrice'].iloc[0] * 100
                 num_long_closes += 1
 
                 long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
@@ -395,9 +416,13 @@ for day in trading_days:
                             delta_diff = abs_diff
                 if long_calls.empty:
                     continue
-                print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index])
+
+                #buy order
+                print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                 long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
                 last_long_price = long_calls['AskPrice'][call_index]
+                cash_balance -= long_call['AskPrice'].iloc[0] * 100
+                balance_invested += long_call['AskPrice'].iloc[0] * 100
                 num_long_buys += 1
 
     if long_option is None:
@@ -413,9 +438,13 @@ for day in trading_days:
                     delta_diff = abs_diff
         if long_calls.empty:
             continue
-        print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index])
+
+        #buy order
+        print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
         long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
         last_long_price = long_calls['AskPrice'][call_index]
+        cash_balance -= long_calls['AskPrice'][call_index] * 100
+        balance_invested += long_calls['AskPrice'][call_index] * 100
         num_long_buys += 1
 
     if short_option is None:
@@ -443,24 +472,44 @@ for day in trading_days:
                         delta_diff = abs_diff
             if short_calls.empty:
                 continue
-            print("Short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index])
-            short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
-            last_short_price = short_calls['BidPrice'][call_index]
-            num_short_sells += 1
+            #sell order
+            if short_calls['BidPrice'][call_index] > 0:
+                print("Short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                last_short_price = short_calls['BidPrice'][call_index]
+                print("short call premium: ", short_calls['BidPrice'][call_index])
+                cash_balance += short_calls['BidPrice'][call_index] * 100
+                balance_invested -= short_calls['BidPrice'][call_index] * 100
+                num_short_sells += 1
 
-    account_value_per_day.append(account_value)
-    print(day, " $", account_value)
+    account_value_per_day.append(cash_balance + balance_invested)
+    result_data.append({'Date': day, 'AccountValue': (cash_balance + balance_invested)})
+    print(day, " cash: $", cash_balance, " invested: $", balance_invested, " total value: $", (cash_balance + balance_invested), " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+
 
 
 keys = ['Date', 'AccountValue']
-result_data = []
-for i in range(len(trading_days)):
-    result_data.append({'Date': trading_days[i], 'AccountValue': account_value_per_day[i]})
 
 with open('spy_backtest_results.csv', 'a') as output_file:
     dict_writer = csv.DictWriter(output_file, restval="-", fieldnames=keys, delimiter=',')
     dict_writer.writeheader()
     dict_writer.writerows(result_data)
+
+
+
+######## to do ##################3
+# change save data pkl function to convert the dates in 2019 and after to string format
+# change expiration dates at end of the week to be fridays instead of saturdays
+
+
+
+
+
+
+
+
+
+
 
 '''for i in data_obj.data.index:
     if data_obj.data['DataDate'][i] > current_date:
