@@ -1,7 +1,12 @@
+# https://www.reddit.com/r/options/comments/qw3pzt/ultimate_guide_to_selling_options_profitably_part/
+# https://classic-desert-4cb.notion.site/Ultimate-Guide-to-Selling-Options-061ca90e28cc494eb855de5ce398af7e
+
+
 import numpy as np
 #import tensorflow
 import pandas as pd
 import pandas_datareader as pdr
+from pandas_datareader import data as pdrd
 import yfinance as yf
 import matplotlib.pyplot as plt
 import pickle as pickle
@@ -1031,7 +1036,44 @@ def plot_results2():
     plt.show()
 
 #backtest_pmcc1_spy2()
-plot_results2()
+#plot_results2()
+
+
+
+
+
+
+
+
+
+######################### vix term structure historical data ##############################
+## TODO: compare vix to vix 3 month and see if there are any days where 3 month was lower than vix (backwardation)
+
+vix_prices = pdrd.get_data_yahoo('^VIX', '2005-01-03', '2021-12-31')
+vix3m_prices = pdrd.get_data_yahoo('^VIX3M', '2005-01-03', '2021-12-31')
+#vix_prices = yf.download('^VIX3M', '2005-01-03', '2021-12-31')
+
+temp = []
+for i in vix_prices.index:
+    temp.append(i.date().strftime('%Y-%m-%d'))
+print('2008-06-26' in temp)
+vix_prices['DateStr'] = temp
+vix_prices = vix_prices.set_index('DateStr')
+vix_prices.index = vix_prices.index.astype(str)
+
+print(temp)
+
+print(vix_prices)
+print(vix3m_prices)
+
+print('2008-06-26' in vix_prices.index)
+print(len(vix_prices.index.tolist()), " ", len(vix3m_prices.index.tolist()))
+
+print(vix_prices.index.dtype)
+print("vix")
+print(vix_prices.loc['2008-06-27']['Close'])
+print("vix3")
+print(vix3m_prices.loc['2008-06-27']['Close'])
 
 ######## to do ##################3
 # change save data pkl function to convert the dates in 2019 and after to string format
