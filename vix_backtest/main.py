@@ -10,6 +10,7 @@ import os
 from timeit import default_timer as timer
 from datetime import datetime
 import csv
+import statistics
 
 
 def saveOptionData():
@@ -61,6 +62,13 @@ def stockDataDF(ticker, startDate, endDate):
     spy_prices_df.index = string_dates
     return spy_prices_df
 
+def sharpe_ratio(return_series, N, rf):
+    total_profit = (return_series[-1] - return_series[0]) / return_series[0]
+    mean = (sum(return_series) / len(return_series)) * N -rf
+    sigma = statistics.stdev(return_series) * np.sqrt(N)
+    #return mean / sigma
+    return (total_profit - rf) / sigma
+
 ## read vic csv files
 data = saveOptionData()
 
@@ -85,6 +93,7 @@ data = data.set_index('Trade Date')
 ## get spy prices
 spy_prices = stockDataDF('SPY', '2005-01-03', '2022-10-31')
 
+## remove duplicates, fix incorrect formatting for dates
 unique_dates = list(set(data.index.tolist()))
 unique_dates = [d for d in unique_dates if d >= '2006-01-03' and d <= '2022-10-31']
 for i in range(len(unique_dates)):
@@ -108,9 +117,9 @@ print(len(unique_dates), " ", len(filtered_spy_prices.index))
 print([i for i in unique_dates if len(i) < 10])
 
 spy_prices_new = []
-spy_prices_original = []
 error_count = 0
 error_count2 = 0
+in_contango = []
 for s in unique_dates:
     temp_df = data.loc[s]
     #print(s)
@@ -119,27 +128,64 @@ for s in unique_dates:
         print("not enough data")
         error_count2 += 1
         spy_prices_new.append(50)
-        spy_prices_original.append(spy_prices['Close'].loc[s])
+        in_contango.append(True)
     else:
         #print(len(temp_df.index))
         #backwardation
         if temp_df['Open'].iloc[0] > temp_df['Open'].iloc[1]:
             spy_prices_new.append(0)
-            spy_prices_original.append(spy_prices['Close'].loc[s])
+            in_contango.append(False)
         #contango
         else:
             try:
                 spy_prices_new.append(spy_prices['Close'].loc[s])
-                spy_prices_original.append(spy_prices['Close'].loc[s])
+                in_contango.append(True)
             except:
                 print("key error")
                 error_count += 1
-                spy_prices_new.append(0)
-                spy_prices_original.append(spy_prices['Close'].loc[s])
+                spy_prices_new.append(True)
 
 print(error_count)
 print(error_count2)
+
+porfolio_value = 100000
+num_shares = 0
+cost_basis = 0
+
+portfolio_values = []
+spy_values = []
+portfolio_values.append(100000)
+spy_values.append(100000)
+num_shares = 100000 / filtered_spy_prices['Open'].iloc[0]
+
+factor = 100000 / filtered_spy_prices['Open'].iloc[0]
+
+#begin backtest
+for i in range(1, len(unique_dates)):
+    spy_price = filtered_spy_prices['Open'].iloc[i]
+    spy_values.append(factor * spy_price)
+    if num_shares > 0:
+        portfolio_value = spy_price * num_shares
+        portfolio_values.append(portfolio_value)
+    else:
+        portfolio_values.append(portfolio_value)
+    if in_contango[i]:
+        if num_shares == 0:
+            #buy shares
+            num_shares = portfolio_value / filtered_spy_prices['Open'].iloc[i]
+    else:
+        if num_shares > 0:
+            #sell shares
+            num_shares = 0
+
+print("Biggest drawdown: ", ((min(portfolio_values) - 100000) / 100000) * 100, "%")
+print("Sharpe ratio: ", sharpe_ratio(portfolio_values, 255, 0.01))
+print("Biggest drawdown: ", ((min(spy_values) - 100000) / 100000) * 100, "%")
+print("Sharpe ratio: ", sharpe_ratio(spy_values, 255, 0.01))
+print("Profit: $", portfolio_values[-1] - portfolio_values[0])
+print("SPY Profit: $", spy_values[-1] - spy_values[0])
+
 datetimes = [datetime.strptime(date, '%Y-%m-%d').date() for date in unique_dates]
-plt.plot(datetimes, spy_prices_new, label="Backtest")
-plt.plot(datetimes, filtered_spy_prices['Close'].tolist(), label="SPY")
+plt.plot(datetimes, portfolio_values, label="Backtest")
+plt.plot(datetimes, spy_values, label="SPY")
 plt.show()
