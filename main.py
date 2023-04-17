@@ -1039,41 +1039,169 @@ def plot_results2():
 #plot_results2()
 
 
+#################################################################################################
+## backtesting weekly spy puts as a hedge
+#################################################################################################
 
+def backtest_weekly_long_spy_puts():
+    start = timer()
+    spy_prices = yf.download('SPY', '2005-01-03', '2021-12-31')
+    vix_prices = yf.download('^VIX', '2005-01-03', '2021-12-31')
+    data_obj = load_historical_data('SPY')
+    end = timer()
+    print(end - start) # Time in seconds, e.g. 5.38091952400282
 
+    trading_days = data_obj.data['DataDate'].unique()
 
+    start = timer()
 
+    spy_prices_df = pd.DataFrame(spy_prices, columns=['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'])
+    print(spy_prices_df)
 
+    current_put: Option = None
 
+    current_account_value = 0
+    account_value_per_day = []
+    result_data = []
+    premium_lost_per_put = []
+    last_buy_price = None
+
+    for day in trading_days:
+        ############## skipping some missing data for spy #####################
+        #if '2007-10-18' > day:
+        #if '2012-01-27' > day and '/' not in day:
+        #2005-01-21
+        if '2005-01-21' > day and '/' not in day:
+            #print("skipping: ", day)
+            continue
+        elif '2005-01-21' == day:
+            print("done skipping")
+
+        print("date: ", day)
+
+        options_chain = data_obj.data.loc[data_obj.data['DataDate'] == day]
+
+        exps = options_chain['ExpirationDate'].unique()
+
+        if current_put is not None and last_buy_price is not None:
+            if current_put.exp_date != date:
+                updated_put = options_chain.loc[(options_chain['ExpirationDate'] == current_put.exp_date) & (options_chain['PutCall'] == "put") & (options_chain['StrikePrice'] == current_put.strike)].drop_duplicates()
+                current_account_value += (updated_put['BidPrice'].iloc[0] - last_buy_price)
+                account_value_per_day.append(current_account_value)
+                result_data.append({'Date': day, 'AccountValue': current_account_value})
+                continue
+            else:
+                updated_put = options_chain.loc[(options_chain['ExpirationDate'] == current_put.exp_date) & (options_chain['PutCall'] == "put") & (options_chain['StrikePrice'] == current_put.strike)].drop_duplicates()
+                if updated_put.empty:
+                    current_account_value += (0 - last_buy_price)
+                else:
+                    current_account_value += (updated_put['BidPrice'].iloc[0] - last_buy_price)
+                last_buy_price = None
+
+        account_value_per_day.append(current_account_value)
+        result_data.append({'Date': day, 'AccountValue': current_account_value})
+
+        ############### dates switch formats in 2019 ##################################
+        current_dt = datetime.strptime(day, '%Y-%m-%d').date() if ('/' not in day) else datetime.strptime(day, '%m/%d/%Y').date()
+        exp_date = None
+
+        for date in exps:
+            ############### dates switch formats in 2019 ##################################
+            exp_date = datetime.strptime(date, '%Y-%m-%d').date() if ('/' not in date) else datetime.strptime(date, '%m/%d/%Y').date()
+            if (exp_date - current_dt).days >= 6:
+                exp_date = date
+                break
+
+        long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < .05)].drop_duplicates()
+        delta_adder = 0
+        while len(long_puts.index) == 0:
+            delta_adder += .01
+            if .5 + delta_adder <= .15:
+                long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < (.05 + delta_adder))].drop_duplicates()
+            else:
+                long_puts = None
+                break
+
+        if long_puts is not None:
+            long_put = long_puts.iloc[-1]
+
+            # check for bad data
+            if long_put['Delta'] == 0 and long_put['Theta'] == 0:
+                continue
+
+            last_buy_price = long_put['AskPrice']
+            current_put = Option('SPY', long_put['ExpirationDate'], long_put['StrikePrice'], False)
+            premium_lost_per_put.append(long_put['AskPrice'])
+        else:
+            current_put = None
+
+    keys = ['Date', 'AccountValue']
+
+    print(result_data)
+
+    with open('weekly_puts_result1.csv', 'a') as output_file:
+        dict_writer = csv.DictWriter(output_file, restval="-", fieldnames=keys, delimiter=',')
+        dict_writer.writeheader()
+        dict_writer.writerows(result_data)
+
+    print("Averge put cost ", sum(premium_lost_per_put) / len(premium_lost_per_put))
+
+def plot_results_weekly_long_put():
+    df = pd.read_csv('weekly_puts_result1.csv').drop_duplicates()
+    #df['Date'] = df['Date'].apply(lambda d: d.date().strftime('%Y/%m/%d'))
+    df = df.set_index('Date')
+    df.index = df.index.astype(str)
+    spy_prices = yf.download('SPY', '2005-01-03', '2021-12-31')
+    spy_prices.index = spy_prices.index.astype(str)
+
+    print(df)
+    print(spy_prices)
+
+    df3 = df.merge(spy_prices, how="inner", left_index=True, right_index=True)
+    print(df3)
+
+    dates_list = [datetime.strptime(date, '%Y-%m-%d').date() for date in df3.index]
+    print(dates_list)
+
+    factor = 100000 / spy_prices['Close'][df.index.tolist()[0]]
+    df3['Close'] = df3['Close'].apply(lambda x: x*factor)
+    # df3['AccountValue'] = df3['AccountValue'].apply(lambda x: 100000 + ((float(x) - 100000) * 5))
+
+    plt.plot(dates_list, df3['AccountValue'].tolist(), label="Backtest")
+    # plt.plot(dates_list, df['Close'].tolist(), label="SPY")
+    plt.show()
+
+# backtest_weekly_long_spy_puts()
+plot_results_weekly_long_put()
 
 ######################### vix term structure historical data ##############################
 ## TODO: compare vix to vix 3 month and see if there are any days where 3 month was lower than vix (backwardation)
 
-vix_prices = pdrd.get_data_yahoo('^VIX', '2005-01-03', '2021-12-31')
-vix3m_prices = pdrd.get_data_yahoo('^VIX3M', '2005-01-03', '2021-12-31')
-#vix_prices = yf.download('^VIX3M', '2005-01-03', '2021-12-31')
+# vix_prices = pdrd.get_data_yahoo('^VIX', '2005-01-03', '2021-12-31')
+# vix3m_prices = pdrd.get_data_yahoo('^VIX3M', '2005-01-03', '2021-12-31')
+# #vix_prices = yf.download('^VIX3M', '2005-01-03', '2021-12-31')
 
-temp = []
-for i in vix_prices.index:
-    temp.append(i.date().strftime('%Y-%m-%d'))
-print('2008-06-26' in temp)
-vix_prices['DateStr'] = temp
-vix_prices = vix_prices.set_index('DateStr')
-vix_prices.index = vix_prices.index.astype(str)
+# temp = []
+# for i in vix_prices.index:
+#     temp.append(i.date().strftime('%Y-%m-%d'))
+# print('2008-06-26' in temp)
+# vix_prices['DateStr'] = temp
+# vix_prices = vix_prices.set_index('DateStr')
+# vix_prices.index = vix_prices.index.astype(str)
 
-print(temp)
+# print(temp)
 
-print(vix_prices)
-print(vix3m_prices)
+# print(vix_prices)
+# print(vix3m_prices)
 
-print('2008-06-26' in vix_prices.index)
-print(len(vix_prices.index.tolist()), " ", len(vix3m_prices.index.tolist()))
+# print('2008-06-26' in vix_prices.index)
+# print(len(vix_prices.index.tolist()), " ", len(vix3m_prices.index.tolist()))
 
-print(vix_prices.index.dtype)
-print("vix")
-print(vix_prices.loc['2008-06-27']['Close'])
-print("vix3")
-print(vix3m_prices.loc['2008-06-27']['Close'])
+# print(vix_prices.index.dtype)
+# print("vix")
+# print(vix_prices.loc['2008-06-27']['Close'])
+# print("vix3")
+# print(vix3m_prices.loc['2008-06-27']['Close'])
 
 ######## to do ##################3
 # change save data pkl function to convert the dates in 2019 and after to string format

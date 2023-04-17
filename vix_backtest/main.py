@@ -69,123 +69,165 @@ def sharpe_ratio(return_series, N, rf):
     #return mean / sigma
     return (total_profit - rf) / sigma
 
-## read vic csv files
-data = saveOptionData()
+def backtest_vix_futures_term_structure():
+    ## read vic csv files
+    data = saveOptionData()
 
-## convert all dates to same format
-dates = data['Trade Date']
-strings = []
-for t in dates:
-    try:
-        if '/' in t:
-            split_str = t.split('/')
-            strings.append(split_str[2] + "-" + split_str[0] + "-" + split_str[1])
+    ## convert all dates to same format
+    dates = data['Trade Date']
+    strings = []
+    for t in dates:
+        try:
+            if '/' in t:
+                split_str = t.split('/')
+                strings.append(split_str[2] + "-" + split_str[0] + "-" + split_str[1])
+            else:
+                strings.append(t)
+            #strings.append(t.replace('/', '-'))
+        except:
+            print("error ", t)
+            break
+
+    data['Trade Date'] = strings
+    data = data.set_index('Trade Date')
+
+    ## get spy prices
+    spy_prices = stockDataDF('SPY', '2005-01-03', '2022-10-31')
+
+    ## remove duplicates, fix incorrect formatting for dates
+    unique_dates = list(set(data.index.tolist()))
+    unique_dates = [d for d in unique_dates if d >= '2006-01-03' and d <= '2022-10-31']
+    for i in range(len(unique_dates)):
+        if len(unique_dates[i]) < 10:
+            temp = unique_dates[i].split('-')
+            if len(temp[1]) < 2:
+                temp[1] = "0" + temp[1]
+            if len(temp[2]) < 2:
+                temp[2] = "0" + temp[2]
+            unique_dates[i] = temp[0] + "-" + temp[1] + "-" + temp[2]
+    unique_dates = [i for i in unique_dates if i in spy_prices.index]
+    unique_dates = list(set(unique_dates))
+    unique_dates.sort()
+    print(unique_dates)
+
+    ## keep only days that match the historical vix data
+    filtered_spy_prices = spy_prices.loc[spy_prices.index.isin(unique_dates)]
+    print(filtered_spy_prices)
+    print(len(unique_dates), " ", len(filtered_spy_prices.index))
+
+    print([i for i in unique_dates if len(i) < 10])
+
+    spy_prices_new = []
+    error_count = 0
+    error_count2 = 0
+    in_contango = []
+    for s in unique_dates:
+        temp_df = data.loc[s]
+        #print(s)
+        #print(temp_df)
+        if data.index.tolist().count(s) <= 2:
+            print("not enough data: ", s)
+            error_count2 += 1
+            spy_prices_new.append(50)
+            in_contango.append(True)
         else:
-            strings.append(t)
-        #strings.append(t.replace('/', '-'))
-    except:
-        print("error ", t)
-        break
+            #print(len(temp_df.index))
+            #backwardation
+            if temp_df['Open'].iloc[1] > temp_df['Open'].iloc[2]:
+                spy_prices_new.append(0)
+                in_contango.append(False)
+            #contango
+            else:
+                try:
+                    spy_prices_new.append(spy_prices['Close'].loc[s])
+                    in_contango.append(True)
+                except:
+                    print("key error")
+                    error_count += 1
+                    spy_prices_new.append(True)
 
-data['Trade Date'] = strings
-data = data.set_index('Trade Date')
+    print(error_count)
+    print(error_count2)
 
-## get spy prices
-spy_prices = stockDataDF('SPY', '2005-01-03', '2022-10-31')
+    porfolio_value = 100000
+    num_shares = 0
+    cost_basis = 0
 
-## remove duplicates, fix incorrect formatting for dates
-unique_dates = list(set(data.index.tolist()))
-unique_dates = [d for d in unique_dates if d >= '2006-01-03' and d <= '2022-10-31']
-for i in range(len(unique_dates)):
-    if len(unique_dates[i]) < 10:
-        temp = unique_dates[i].split('-')
-        if len(temp[1]) < 2:
-            temp[1] = "0" + temp[1]
-        if len(temp[2]) < 2:
-            temp[2] = "0" + temp[2]
-        unique_dates[i] = temp[0] + "-" + temp[1] + "-" + temp[2]
-unique_dates = [i for i in unique_dates if i in spy_prices.index]
-unique_dates = list(set(unique_dates))
-unique_dates.sort()
-print(unique_dates)
+    portfolio_values = []
+    spy_values = []
+    portfolio_values.append(100000)
+    spy_values.append(100000)
+    num_shares = 100000 / filtered_spy_prices['Open'].iloc[0]
 
-## keep only days that match the historical vix data
-filtered_spy_prices = spy_prices.loc[spy_prices.index.isin(unique_dates)]
-print(filtered_spy_prices)
-print(len(unique_dates), " ", len(filtered_spy_prices.index))
+    factor = 100000 / filtered_spy_prices['Open'].iloc[0]
 
-print([i for i in unique_dates if len(i) < 10])
-
-spy_prices_new = []
-error_count = 0
-error_count2 = 0
-in_contango = []
-for s in unique_dates:
-    temp_df = data.loc[s]
-    #print(s)
-    #print(temp_df)
-    if data.index.tolist().count(s) <= 1:
-        print("not enough data")
-        error_count2 += 1
-        spy_prices_new.append(50)
-        in_contango.append(True)
-    else:
-        #print(len(temp_df.index))
-        #backwardation
-        if temp_df['Open'].iloc[0] > temp_df['Open'].iloc[1]:
-            spy_prices_new.append(0)
-            in_contango.append(False)
-        #contango
-        else:
-            try:
-                spy_prices_new.append(spy_prices['Close'].loc[s])
-                in_contango.append(True)
-            except:
-                print("key error")
-                error_count += 1
-                spy_prices_new.append(True)
-
-print(error_count)
-print(error_count2)
-
-porfolio_value = 100000
-num_shares = 0
-cost_basis = 0
-
-portfolio_values = []
-spy_values = []
-portfolio_values.append(100000)
-spy_values.append(100000)
-num_shares = 100000 / filtered_spy_prices['Open'].iloc[0]
-
-factor = 100000 / filtered_spy_prices['Open'].iloc[0]
-
-#begin backtest
-for i in range(1, len(unique_dates)):
-    spy_price = filtered_spy_prices['Open'].iloc[i]
-    spy_values.append(factor * spy_price)
-    if num_shares > 0:
-        portfolio_value = spy_price * num_shares
-        portfolio_values.append(portfolio_value)
-    else:
-        portfolio_values.append(portfolio_value)
-    if in_contango[i]:
-        if num_shares == 0:
-            #buy shares
-            num_shares = portfolio_value / filtered_spy_prices['Open'].iloc[i]
-    else:
+    #begin backtest
+    for i in range(1, len(unique_dates)):
+        spy_price = filtered_spy_prices['Open'].iloc[i]
+        spy_values.append(factor * spy_price)
         if num_shares > 0:
-            #sell shares
-            num_shares = 0
+            portfolio_value = spy_price * num_shares
+            portfolio_values.append(portfolio_value)
+        else:
+            portfolio_values.append(portfolio_value)
+        if in_contango[i]:
+            if num_shares == 0:
+                #buy shares
+                num_shares = portfolio_value / filtered_spy_prices['Open'].iloc[i]
+        else:
+            if num_shares > 0:
+                #sell shares
+                num_shares = 0
 
-print("Biggest drawdown: ", ((min(portfolio_values) - 100000) / 100000) * 100, "%")
-print("Sharpe ratio: ", sharpe_ratio(portfolio_values, 255, 0.01))
+    print("Biggest drawdown: ", ((min(portfolio_values) - 100000) / 100000) * 100, "%")
+    print("Sharpe ratio: ", sharpe_ratio(portfolio_values, 255, 0.01))
+    print("Biggest drawdown: ", ((min(spy_values) - 100000) / 100000) * 100, "%")
+    print("Sharpe ratio: ", sharpe_ratio(spy_values, 255, 0.01))
+    print("Profit: $", portfolio_values[-1] - portfolio_values[0])
+    print("SPY Profit: $", spy_values[-1] - spy_values[0])
+
+    datetimes = [datetime.strptime(date, '%Y-%m-%d').date() for date in unique_dates]
+    plt.plot(datetimes, portfolio_values, label="Backtest")
+    plt.plot(datetimes, spy_values, label="SPY")
+    plt.show()
+
+spy = stockDataDF('SPY', '2006-07-17', '2022-10-31')
+vix = stockDataDF('^VIX', '2006-07-17', '2022-10-31')
+vix3m = stockDataDF('^VIX3M', '2006-07-17', '2022-10-31')
+
+print(len(spy.index))
+print(len(vix.index))
+print(len(vix3m.index))
+
+account_value = 100000
+num_shares = 0
+
+factor = 100000 / spy['Open'].iloc[0]
+
+spy_values = []
+account_values = []
+
+for i in spy.index:
+    spy_values.append(spy['Open'].loc[i] * factor)
+    if num_shares > 0:
+        account_value = num_shares * spy['Open'].loc[i]
+    account_values.append(account_value)
+    #backwardation
+    if vix['Open'].loc[i] < vix3m['Open'].loc[i]:
+        if num_shares > 0:
+            num_shares = 0
+    else:
+        if num_shares == 0:
+            num_shares = account_value / spy['Open'].loc[i]
+
+print("Biggest drawdown: ", ((min(account_values) - 100000) / 100000) * 100, "%")
+print("Sharpe ratio: ", sharpe_ratio(account_values, 255, 0.01))
 print("Biggest drawdown: ", ((min(spy_values) - 100000) / 100000) * 100, "%")
 print("Sharpe ratio: ", sharpe_ratio(spy_values, 255, 0.01))
-print("Profit: $", portfolio_values[-1] - portfolio_values[0])
+print("Profit: $", account_values[-1] - account_values[0])
 print("SPY Profit: $", spy_values[-1] - spy_values[0])
 
-datetimes = [datetime.strptime(date, '%Y-%m-%d').date() for date in unique_dates]
-plt.plot(datetimes, portfolio_values, label="Backtest")
+datetimes = [datetime.strptime(date, '%Y-%m-%d').date() for date in spy.index]
+plt.plot(datetimes, account_values, label="Backtest")
 plt.plot(datetimes, spy_values, label="SPY")
 plt.show()
