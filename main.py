@@ -294,6 +294,7 @@ def backtest_pmcc1_spy():
 
     cash_balance = 100000
     balance_invested = 0
+    premium_collected = 0
 
     num_long_buys = 0
     num_long_closes = 0
@@ -303,10 +304,12 @@ def backtest_pmcc1_spy():
     account_value_per_day = []
     result_data = []
 
+    total_slippage = 0
+
     for day in trading_days:
         ############## skipping some missing data for spy #####################
         #if '2005-01-21' > day:
-        if '2007-10-18' > day and '/' not in day:
+        if '2011-10-18' > day and '/' not in day:
             #print("skipping: ", day)
             continue
         elif '2005-01-21' == day:
@@ -350,9 +353,11 @@ def backtest_pmcc1_spy():
                 if not short_call.empty:
                     cash_balance -= short_call['AskPrice'].iloc[0] * 100
                     balance_invested += short_call['AskPrice'].iloc[0] * 100
+                    premium_collected -= short_call['AskPrice'].iloc[0] * 100
                 else:
                     cash_balance -= last_short_price * 100
                     balance_invested += last_short_price * 100
+                    premium_collected -= last_short_price * 100
                 last_short_price = None
                 num_short_closes += 1
                 print("Couldn't find the current position anymore. Closing all positions")
@@ -388,6 +393,7 @@ def backtest_pmcc1_spy():
                     cash_balance -= short_call['AskPrice'].iloc[0] * 100
                     balance_invested += short_call['AskPrice'].iloc[0] * 100
                     print("CLOSING SHORT CALLS: ", short_call['AskPrice'].iloc[0])
+                    premium_collected -= short_call['AskPrice'].iloc[0] * 100
                     short_option = None
                     num_short_closes += 1
 
@@ -416,7 +422,9 @@ def backtest_pmcc1_spy():
                         #sell order
                         if short_calls['BidPrice'][call_index] > 0:
                             print("short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                            premium_collected += short_calls['BidPrice'][call_index] * 100
                             short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                            total_slippage += (short_calls['AskPrice'][call_index] - short_calls['BidPrice'][call_index]) / 2
                             last_short_price = short_calls['BidPrice'][call_index]
                             print("short call premium: ", short_calls['BidPrice'][call_index])
                             cash_balance += short_calls['BidPrice'][call_index] * 100
@@ -451,6 +459,7 @@ def backtest_pmcc1_spy():
                     #buy order
                     print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                     long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
+                    total_slippage += (long_calls['AskPrice'][call_index] - long_calls['BidPrice'][call_index]) / 2
                     last_long_price = long_calls['AskPrice'][call_index]
                     cash_balance -= long_call['AskPrice'].iloc[0] * 100
                     balance_invested += long_call['AskPrice'].iloc[0] * 100
@@ -477,6 +486,7 @@ def backtest_pmcc1_spy():
             #buy order
             print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
             long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
+            total_slippage += (long_calls['AskPrice'][call_index] - long_calls['BidPrice'][call_index]) / 2
             last_long_price = long_calls['AskPrice'][call_index]
             cash_balance -= long_calls['AskPrice'][call_index] * 100
             balance_invested += long_calls['AskPrice'][call_index] * 100
@@ -511,7 +521,9 @@ def backtest_pmcc1_spy():
                 #sell order
                 if short_calls['BidPrice'][call_index] > 0:
                     print("Short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                    premium_collected += short_calls['BidPrice'][call_index] * 100
                     short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                    total_slippage += (short_calls['AskPrice'][call_index] - short_calls['BidPrice'][call_index]) / 2
                     last_short_price = short_calls['BidPrice'][call_index]
                     print("short call premium: ", short_calls['BidPrice'][call_index])
                     cash_balance += short_calls['BidPrice'][call_index] * 100
@@ -530,6 +542,13 @@ def backtest_pmcc1_spy():
         dict_writer.writeheader()
         dict_writer.writerows(result_data)
 
+    with open('spy_backtest_results.txt', 'a') as output_file:
+        output_file.write('total premium collected: ')
+        output_file.write(str(premium_collected))
+        output_file.write('\n')
+        output_file.write('total slippage: ')
+        output_file.write(str(total_slippage))
+
     end = timer()
     print(end - start) # Time in seconds, e.g. 5.38091952400282
 
@@ -537,6 +556,7 @@ def backtest_pmcc1_spy():
     print("number of shorts bought back: ", num_short_closes)
     print("number of long buys: ", num_long_buys)
     print("number of long sold again ", num_long_closes)
+    print("total premium collected: ", premium_collected)
 
 #plots results from backtest 1
 def plot_results():
@@ -574,15 +594,19 @@ def plot_results():
     plt.show()
 
 #backtest 2
-def backtest_pmcc1_spy2():
+def backtest_pmcc1_spy2(data_obj):
     start = timer()
     spy_prices = yf.download('SPY', '2005-01-03', '2021-12-31')
     vix_prices = yf.download('^VIX', '2005-01-03', '2021-12-31')
-    data_obj = load_historical_data('SPY')
+    # data_obj = load_historical_data('SPY')
     end = timer()
     print(end - start) # Time in seconds, e.g. 5.38091952400282
 
-    trading_days = data_obj.data['DataDate'].unique()
+    trading_days = data_obj.data['DataDate'].unique().tolist()
+
+    ## skip over days with potentially bad data
+    trading_days.remove('2013-04-16')
+    trading_days.remove('2017-01-27')
 
     start = timer()
 
@@ -608,11 +632,14 @@ def backtest_pmcc1_spy2():
     account_value_per_day = []
     result_data = []
 
+    total_slippage = 0
+
     for day in trading_days:
         ############## skipping some missing data for spy #####################
-        #if '2005-01-21' > day:
-        #if '2012-01-27' > day and '/' not in day:
-        if '2007-10-18' > day and '/' not in day:
+        if '2005-01-21' > day or '2008-04-13' < day:
+        # if ('2012-04-12' > day or '2012-04-13' < day) and '/' not in day:
+        # if '2006-10-18' > day and '/' not in day:
+        # if '2011-10-18' > day and '/' not in day:
             #print("skipping: ", day)
             continue
         elif '2005-01-21' == day:
@@ -650,15 +677,21 @@ def backtest_pmcc1_spy2():
                     if bad_mark:
                         cash_balance += last_long_price * 100
                         balance_invested -= last_long_price * 100
+                        print("updating balance invested1: ", balance_invested, " last long price ", last_long_price)
                     else:
                         cash_balance += long_call['BidPrice'].iloc[0] * 100
                         balance_invested -= long_call['BidPrice'].iloc[0] * 100
+                        print("updating balance invested2: ", balance_invested)
+
                 else:
                     cash_balance += last_long_price * 100
                     balance_invested -= last_long_price * 100
                 last_long_price = None
                 #cost_basis = None
                 num_long_closes += 1
+                if num_long_buys < num_long_closes:
+                    print("1: too many closes on: ", day)
+                    # break
                 if not short_call.empty:
                     cash_balance -= short_call['AskPrice'].iloc[0] * 100
                     balance_invested += short_call['AskPrice'].iloc[0] * 100
@@ -738,10 +771,12 @@ def backtest_pmcc1_spy2():
                             print("short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                             premium_collected += short_calls['BidPrice'][call_index] * 100
                             short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                            total_slippage += (short_calls['AskPrice'][call_index] - short_calls['BidPrice'][call_index]) / 2
                             last_short_price = short_calls['BidPrice'][call_index]
                             print("short call premium: ", short_calls['BidPrice'][call_index])
                             cash_balance += short_calls['BidPrice'][call_index] * 100
                             balance_invested -= short_call['BidPrice'].iloc[0] * 100
+                            print("updating balance invested3: ", balance_invested, " buys ", num_long_buys, " closes ", num_long_closes)
                             num_short_sells += 1
 
 
@@ -751,20 +786,31 @@ def backtest_pmcc1_spy2():
                     #close long position
                     cash_balance += long_call['BidPrice'].iloc[0] * 100
                     balance_invested -= long_call['BidPrice'].iloc[0] * 100
+                    print("updating balance invested4: ", balance_invested, " buys ", num_long_buys, " closes ", num_long_closes)
                     #cost_basis = None
                     num_long_closes += 1
                     print("rolling long call")
+                    if num_long_buys < num_long_closes:
+                        print("2: too many closes on: ", day)
+                        # break
 
                     long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
                     call_index = 0
                     delta_diff = 1000
+                    strike_price = 0
                     for call_ind in long_calls.index:
                         if isinstance(long_calls['Delta'][call_ind], (int, float)):
                             abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
                             if abs_diff < delta_diff:
                                 call_index = call_ind
                                 delta_diff = abs_diff
+                                strike_price = long_calls['StrikePrice'][call_ind]
+                            elif abs_diff == delta_diff and long_calls['StrikePrice'][call_ind] > strike_price:
+                                call_index = call_ind
+                                delta_diff = abs_diff
+                                strike_price = long_calls['StrikePrice'][call_ind]
                     if long_calls.empty:
+                        print("NO CALLS FOUND")
                         result_data.append({'Date': day, 'AccountValue': (cash_balance + balance_invested)})
                         print(day, " cash: $", cash_balance, " invested: $", balance_invested, " total value: $", (cash_balance + balance_invested), " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                         continue
@@ -775,8 +821,9 @@ def backtest_pmcc1_spy2():
                         continue
 
                     #buy order
-                    print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                    print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none", " last long price ", long_calls['AskPrice'][call_index])
                     long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
+                    total_slippage += (long_calls['AskPrice'][call_index] - long_calls['BidPrice'][call_index]) / 2
                     last_long_price = long_calls['AskPrice'][call_index]
                     cash_balance -= long_call['AskPrice'].iloc[0] * 100
                     balance_invested += long_call['AskPrice'].iloc[0] * 100
@@ -803,16 +850,23 @@ def backtest_pmcc1_spy2():
                     if bad_mark:
                         cash_balance += last_long_price * 100
                         balance_invested -= last_long_price * 100
+                        print("updating balance invested5: ", balance_invested, " buys ", num_long_buys, " closes ", num_long_closes)
+
                     else:
                         cash_balance += long_call['BidPrice'].iloc[0] * 100
                         balance_invested -= long_call['BidPrice'].iloc[0] * 100
+                        print("updating balance invested6: ", balance_invested, " buys ", num_long_buys, " closes ", num_long_closes)
                 else:
                     cash_balance += last_long_price * 100
                     balance_invested -= last_long_price * 100
+                    print("updating balance invested7: ", balance_invested)
                 last_long_price = None
                 #cost_basis = None
                 num_long_closes += 1
                 print("Couldn't find the current position anymore. Closing all positions")
+                if num_long_buys < num_long_closes:
+                    print("3: too many closes on: ", day)
+                    # break
             else:
                 #update portfolio value
                 balance_invested = (long_call['BidPrice'].iloc[0] * 100)
@@ -823,21 +877,33 @@ def backtest_pmcc1_spy2():
                     #close long position
                     cash_balance += long_call['BidPrice'].iloc[0] * 100
                     balance_invested -= long_call['BidPrice'].iloc[0] * 100
+                    print("updating balance invested8: ", balance_invested)
                     #cost_basis = None
                     num_long_closes += 1
                     print("rolling long call")
+                    if num_long_buys < num_long_closes:
+                        print("4: too many closes on: ", day)
+                        # break
 
                     long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
                     call_index = 0
                     delta_diff = 1000
+                    strike_price = 0
                     for call_ind in long_calls.index:
                         if isinstance(long_calls['Delta'][call_ind], (int, float)):
                             abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
                             if abs_diff < delta_diff:
                                 call_index = call_ind
                                 delta_diff = abs_diff
+                                strike_price = long_calls['StrikePrice'][call_ind]
+                            elif abs_diff == delta_diff and long_calls['StrikePrice'][call_ind] > strike_price:
+                                call_index = call_ind
+                                delta_diff = abs_diff
+                                strike_price = long_calls['StrikePrice'][call_ind]
                     if long_calls.empty:
+                        print("NO LONG CALL FOUND")
                         result_data.append({'Date': day, 'AccountValue': (cash_balance + balance_invested)})
+                        long_option = None
                         print(day, " cash: $", cash_balance, " invested: $", balance_invested, " total value: $", (cash_balance + balance_invested), " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                         continue
                     if long_calls['BidPrice'][call_ind] < (long_calls['UnderlyingPrice'][call_ind] - long_calls['StrikePrice'][call_ind]):
@@ -847,8 +913,9 @@ def backtest_pmcc1_spy2():
                         continue
 
                     #buy order
-                    print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+                    print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none", " last long price ", long_calls['AskPrice'][call_index])
                     long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
+                    total_slippage += (long_calls['AskPrice'][call_index] - long_calls['BidPrice'][call_index]) / 2
                     last_long_price = long_calls['AskPrice'][call_index]
                     cash_balance -= long_call['AskPrice'].iloc[0] * 100
                     balance_invested += long_call['AskPrice'].iloc[0] * 100
@@ -861,12 +928,19 @@ def backtest_pmcc1_spy2():
             long_calls = options_chain.loc[(options_chain['ExpirationDate'] == exps[-1]) & (options_chain['PutCall'] == "call") & (abs(options_chain['Delta']) > .5)].drop_duplicates()
             call_index = 0
             delta_diff = 1000
+            strike_price = 0
             for call_ind in long_calls.index:
                 if isinstance(long_calls['Delta'][call_ind], (int, float)):
                     abs_diff = abs(abs(long_calls['Delta'][call_ind]) - .9)
+                    # print("current option difference: ", abs_diff, " current_strike: ", long_calls['StrikePrice'][call_ind], " smallest difference: ", delta_diff, " best strike ", strike_price)
                     if abs_diff < delta_diff:
                         call_index = call_ind
                         delta_diff = abs_diff
+                        strike_price = long_calls['StrikePrice'][call_ind]
+                    elif abs_diff == delta_diff and long_calls['StrikePrice'][call_ind] > strike_price:
+                        call_index = call_ind
+                        delta_diff = abs_diff
+                        strike_price = long_calls['StrikePrice'][call_ind]
             if long_calls.empty:
                 result_data.append({'Date': day, 'AccountValue': (cash_balance + balance_invested)})
                 print(day, " cash: $", cash_balance, " invested: $", balance_invested, " total value: $", (cash_balance + balance_invested), " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
@@ -878,8 +952,9 @@ def backtest_pmcc1_spy2():
                 continue
 
             #buy order
-            print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+            print("Long call exp: ", exps[-1], ", Delta: ", long_calls['Delta'][call_index], " strike: ", long_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none", " last long price ", long_calls['AskPrice'][call_index])
             long_option = Option('SPY', long_calls['ExpirationDate'][call_index], long_calls['StrikePrice'][call_index], True)
+            total_slippage += (long_calls['AskPrice'][call_index] - long_calls['BidPrice'][call_index]) / 2
             last_long_price = long_calls['AskPrice'][call_index]
             cash_balance -= long_calls['AskPrice'][call_index] * 100
             balance_invested += long_calls['AskPrice'][call_index] * 100
@@ -924,15 +999,21 @@ def backtest_pmcc1_spy2():
                     print("Short call exp: ", short_calls['ExpirationDate'][call_index], ", Delta: ", short_calls['Delta'][call_index], " strike: ", short_calls['StrikePrice'][call_index], " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
                     premium_collected += short_calls['BidPrice'][call_index] * 100
                     short_option = Option('SPY', short_calls['ExpirationDate'][call_index], short_calls['StrikePrice'][call_index], True)
+                    total_slippage += (short_calls['AskPrice'][call_index] - short_calls['BidPrice'][call_index]) / 2
                     last_short_price = short_calls['BidPrice'][call_index]
                     print("short call premium: ", short_calls['BidPrice'][call_index])
                     cash_balance += short_calls['BidPrice'][call_index] * 100
                     balance_invested -= short_calls['BidPrice'][call_index] * 100
+                    print("updating balance invested9: ", balance_invested)
                     num_short_sells += 1
 
         account_value_per_day.append(cash_balance + balance_invested)
         result_data.append({'Date': day, 'AccountValue': (cash_balance + balance_invested)})
         print(day, " cash: $", cash_balance, " invested: $", balance_invested, " total value: $", (cash_balance + balance_invested), " stock price: ", spy_prices_df['Close'][day] if ('/' not in day and day in spy_prices_df.index) else "none")
+        print(" buys ", num_long_buys, " closes ", num_long_closes)
+        if num_long_buys < num_long_closes:
+            print("5: too many closes on: ", day)
+            # break
 
     print("seven")
     keys = ['Date', 'AccountValue']
@@ -941,6 +1022,14 @@ def backtest_pmcc1_spy2():
         dict_writer = csv.DictWriter(output_file, restval="-", fieldnames=keys, delimiter=',')
         dict_writer.writeheader()
         dict_writer.writerows(result_data)
+
+    with open('spy_backtest_results2.txt', 'a') as output_file:
+        output_file.write('total premium collected: ')
+        output_file.write(str(premium_collected))
+        output_file.write('\n')
+        output_file.write('total slippage: ')
+        output_file.write(str(total_slippage))
+
 
     end = timer()
     print(end - start) # Time in seconds, e.g. 5.38091952400282
@@ -1028,22 +1117,37 @@ def plot_results2():
     print(dates_list)
 
     factor = 100000 / spy_prices['Close'][df.index.tolist()[0]]
-    df3['Close'] = df3['Close'].apply(lambda x: x*factor)
-    df3['AccountValue'] = df3['AccountValue'].apply(lambda x: 100000 + ((float(x) - 100000) * 5))
+    # df3['Close'] = df3['Close'].apply(lambda x: x*factor)
+    # df3['AccountValue'] = df3['AccountValue'].apply(lambda x: 100000 + ((float(x) - 100000) * 5))
+
+    print("lowest point: ", min(df3['AccountValue'].tolist()))
+
+    temp_dates = df3.index.values.tolist()
+    temp = df3['AccountValue'].tolist()
+    for i in range(1, len(temp)):
+        if temp[i] - temp[i-1] > 10000:
+            print("glitch: date: ", temp_dates[i])
 
     plt.plot(dates_list, df3['AccountValue'].tolist(), label="Backtest")
-    plt.plot(dates_list, df3['Close'].tolist(), label="SPY")
+    # plt.plot(dates_list, df3['Close'].tolist(), label="SPY")
     plt.show()
 
 #backtest_pmcc1_spy2()
 #plot_results2()
 
+# backtest_pmcc1_spy()
+# backtest_pmcc1_spy2()
+# plot_results2()
+# plot_results()
+
+# 2013-04-16
+# 2017-01-27
 
 #################################################################################################
 ## backtesting weekly spy puts as a hedge
 #################################################################################################
 
-def backtest_weekly_long_spy_puts():
+def backtest_weekly_long_spy_puts(dte, delta):
     start = timer()
     spy_prices = yf.download('SPY', '2005-01-03', '2021-12-31')
     vix_prices = yf.download('^VIX', '2005-01-03', '2021-12-31')
@@ -1108,16 +1212,16 @@ def backtest_weekly_long_spy_puts():
         for date in exps:
             ############### dates switch formats in 2019 ##################################
             exp_date = datetime.strptime(date, '%Y-%m-%d').date() if ('/' not in date) else datetime.strptime(date, '%m/%d/%Y').date()
-            if (exp_date - current_dt).days >= 6:
+            if (exp_date - current_dt).days >= dte:
                 exp_date = date
                 break
 
-        long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < .05)].drop_duplicates()
+        long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < delta)].drop_duplicates()
         delta_adder = 0
         while len(long_puts.index) == 0:
             delta_adder += .01
-            if .5 + delta_adder <= .15:
-                long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < (.05 + delta_adder))].drop_duplicates()
+            if delta_adder <= .1:
+                long_puts = options_chain.loc[(options_chain['ExpirationDate'] == exp_date) & (options_chain['PutCall'] == "put") & (abs(options_chain['Delta']) < (delta + delta_adder))].drop_duplicates()
             else:
                 long_puts = None
                 break
@@ -1165,14 +1269,22 @@ def plot_results_weekly_long_put():
 
     factor = 100000 / spy_prices['Close'][df.index.tolist()[0]]
     df3['Close'] = df3['Close'].apply(lambda x: x*factor)
+    df3['AccountValue'] = df3['AccountValue'].apply(lambda x: x * 100)
     # df3['AccountValue'] = df3['AccountValue'].apply(lambda x: 100000 + ((float(x) - 100000) * 5))
 
-    plt.plot(dates_list, df3['AccountValue'].tolist(), label="Backtest")
+    fig, (ax1, ax2) = plt.subplots(2, 1)
+    ax1.plot(dates_list, df3['Close'].tolist(), label="SPY")
+    ax2.plot(dates_list, df3['AccountValue'].tolist(), label="Backtest")
+
+    # plt.plot(dates_list, df3['AccountValue'].tolist(), label="Backtest")
     # plt.plot(dates_list, df['Close'].tolist(), label="SPY")
     plt.show()
+    
 
-# backtest_weekly_long_spy_puts()
-plot_results_weekly_long_put()
+# store_new_symbol('TQQQ')
+
+#backtest_weekly_long_spy_puts(90, .10)
+#plot_results_weekly_long_put()
 
 ######################### vix term structure historical data ##############################
 ## TODO: compare vix to vix 3 month and see if there are any days where 3 month was lower than vix (backwardation)

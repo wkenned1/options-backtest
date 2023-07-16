@@ -1,0 +1,12 @@
+total premium collected: -5234.0
+total slippage: 143.8150000000002total premium collected: -5234.0
+total slippage: 143.8150000000002total premium collected: -16.999999999999886
+total slippage: 19.20500000000004total premium collected: 7.000000000000001
+total slippage: 0.5399999999999994total premium collected: 0.0
+total slippage: 0.6599999999999986total premium collected: 7.000000000000001
+total slippage: 0.5399999999999994total premium collected: -80.99999999999997
+total slippage: 2.0549999999999984total premium collected: -80.99999999999997
+total slippage: 2.0549999999999984total premium collected: -80.99999999999997
+total slippage: 2.0549999999999984total premium collected: -80.99999999999997
+total slippage: 2.0549999999999984total premium collected: -80.99999999999997
+total slippage: 2.0549999999999984

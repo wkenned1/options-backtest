@@ -1,0 +1,2 @@
+total premium collected: -5634.0
+total slippage: 139.24500000000026
