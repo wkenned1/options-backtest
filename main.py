@@ -62,7 +62,7 @@ def saveOptionData(ticker):
     days_list = []
     dataframes = []
 
-    base_path = "../../historical_option_data/"
+    base_path = "../historical_options_data/"
 
     for i in single_dataset_years:
         path = base_path
@@ -157,8 +157,9 @@ def saveOptionData(ticker):
 def readCsv(ticker, path):
     #data = pd.read_csv(path, skiprows= lambda x: isinstance(data.iloc[[x]]['ImpliedVolatility'], str), dtype={'OpenInterest': int, 'UnderlyingPrice': float, 'Volume': int, 'ImpliedVolatility': float, 'StrikePrice': float})
     data = pd.read_csv(path)
+
     #ret = data[data['ImpliedVolatility'].apply(lambda x: not isinstance(x, str))]
-    return data[data["Symbol"] == 'SPY']
+    return data[data["Symbol"] == ticker]
 
 ########################## average daily range ###############################
 def avg_daily_range(ticker, start, end):
@@ -1281,40 +1282,38 @@ def plot_results_weekly_long_put():
     plt.show()
     
 
-# store_new_symbol('TQQQ')
 
-#backtest_weekly_long_spy_puts(90, .10)
-#plot_results_weekly_long_put()
+def saveSPXData():
+    ticker = 'SPX'
+    years = ['2005', '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023']
 
-######################### vix term structure historical data ##############################
-## TODO: compare vix to vix 3 month and see if there are any days where 3 month was lower than vix (backwardation)
+    days_list = []
+    dataframes = []
 
-# vix_prices = pdrd.get_data_yahoo('^VIX', '2005-01-03', '2021-12-31')
-# vix3m_prices = pdrd.get_data_yahoo('^VIX3M', '2005-01-03', '2021-12-31')
-# #vix_prices = yf.download('^VIX3M', '2005-01-03', '2021-12-31')
+    base_path = "../historical_spx/SPX/"
 
-# temp = []
-# for i in vix_prices.index:
-#     temp.append(i.date().strftime('%Y-%m-%d'))
-# print('2008-06-26' in temp)
-# vix_prices['DateStr'] = temp
-# vix_prices = vix_prices.set_index('DateStr')
-# vix_prices.index = vix_prices.index.astype(str)
+    for i in years:
+        path = base_path
+        path += i
+        path += "/"
+        files = sorted(os.listdir(path))
+        for k in files:
+            path3 = path + k
+            raw_date = k.split("_")[1]
+            date = raw_date[0:4] + "-" + raw_date[4:6] + "-" + raw_date[6:8]
+            days_list.append(date)
+            # print(path3)
+            dataframes.append(readCsv(ticker, path3))
+            # print(readCsv(ticker, path3))
+            #print("file read")
 
-# print(temp)
+    total_data = pd.concat(dataframes)
+    # data_obj = HistoricalData(ticker, days_list[:], total_data)
+    return total_data
 
-# print(vix_prices)
-# print(vix3m_prices)
+# data = saveOptionData('DIA')
+# print(data)
+# save_object(data, 'spx_option_data.pkl')
 
-# print('2008-06-26' in vix_prices.index)
-# print(len(vix_prices.index.tolist()), " ", len(vix3m_prices.index.tolist()))
-
-# print(vix_prices.index.dtype)
-# print("vix")
-# print(vix_prices.loc['2008-06-27']['Close'])
-# print("vix3")
-# print(vix3m_prices.loc['2008-06-27']['Close'])
-
-######## to do ##################3
-# change save data pkl function to convert the dates in 2019 and after to string format
-# change expiration dates at end of the week to be fridays instead of saturdays
+df = pd.read_pickle("dia_option_data.pkl")
+print(df.data)
